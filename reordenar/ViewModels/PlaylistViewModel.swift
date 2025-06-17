@@ -54,8 +54,8 @@ class PlaylistViewModel: ObservableObject {
             // Fetch recently played tracks first to determine playlist activity
             await fetchRecentlyPlayedTracks()
             
-            let response = try await spotifyAPI.fetchUserPlaylists()
-            let sortedPlaylists = sortPlaylistsByRecentActivity(response.items)
+            let allPlaylists = try await spotifyAPI.fetchAllUserPlaylists()
+            let sortedPlaylists = sortPlaylistsByRecentActivity(allPlaylists)
             playlists = sortedPlaylists
         } catch {
             errorMessage = "Failed to fetch playlists: \(error.localizedDescription)"
@@ -130,8 +130,8 @@ class PlaylistViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            let response = try await spotifyAPI.fetchPlaylistTracks(playlistId: playlist.id)
-            tracks = response.items.filter { $0.track != nil } // Filter out null tracks
+            let allTracks = try await spotifyAPI.fetchAllPlaylistTracks(playlistId: playlist.id)
+            tracks = allTracks.filter { $0.track != nil } // Filter out null tracks
             originalTrackOrder = tracks
             hasUnsavedChanges = false
             
@@ -242,6 +242,34 @@ class PlaylistViewModel: ObservableObject {
         checkForChanges()
     }
     
+    // MARK: - Delete Operations
+    func deleteTrack(_ track: SpotifyPlaylistTrack) {
+        // Remove from local tracks array only (creates unsaved changes)
+        tracks.removeAll { $0.id == track.id }
+        
+        // Update grouped view if needed
+        if viewMode == .groupedByArtist {
+            updateTrackGroups()
+        }
+        
+        checkForChanges()
+    }
+    
+    func deleteArtist(_ artistName: String) {
+        // Remove all tracks by this artist from local tracks array
+        tracks.removeAll { track in
+            let trackArtist = track.track?.primaryArtist ?? "Unknown Artist"
+            return trackArtist == artistName
+        }
+        
+        // Update grouped view if needed
+        if viewMode == .groupedByArtist {
+            updateTrackGroups()
+        }
+        
+        checkForChanges()
+    }
+    
     // MARK: - Preview System
     func generatePreview() {
         previewChanges = tracks
@@ -267,7 +295,20 @@ class PlaylistViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            // Calculate the minimum number of API calls needed
+            // First, handle deletions (tracks that are in original but not in current)
+            let tracksToDelete = originalTrackOrder.filter { originalTrack in
+                !tracks.contains { currentTrack in currentTrack.id == originalTrack.id }
+            }
+            
+            for track in tracksToDelete {
+                if let trackUri = track.track?.uri {
+                    try await spotifyAPI.removeTrackFromPlaylist(playlistId: playlist.id, trackUri: trackUri)
+                    // Small delay to avoid rate limiting
+                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                }
+            }
+            
+            // Then handle reordering of remaining tracks
             let reorderOperations = calculateReorderOperations()
             
             for operation in reorderOperations {
@@ -319,6 +360,40 @@ class PlaylistViewModel: ObservableObject {
     // MARK: - Utility Methods
     private func checkForChanges() {
         hasUnsavedChanges = !tracks.elementsEqual(originalTrackOrder) { $0.id == $1.id }
+    }
+    
+    var deletedTracksCount: Int {
+        let deletedTracks = originalTrackOrder.filter { originalTrack in
+            !tracks.contains { currentTrack in currentTrack.id == originalTrack.id }
+        }
+        return deletedTracks.count
+    }
+    
+    var hasReorderingChanges: Bool {
+        // Check if any tracks that exist in both arrays are in different positions
+        let commonTracks = tracks.filter { currentTrack in
+            originalTrackOrder.contains { originalTrack in originalTrack.id == currentTrack.id }
+        }
+        
+        let commonOriginalTracks = originalTrackOrder.filter { originalTrack in
+            tracks.contains { currentTrack in currentTrack.id == originalTrack.id }
+        }
+        
+        return !commonTracks.elementsEqual(commonOriginalTracks) { $0.id == $1.id }
+    }
+    
+    var changesSummary: String {
+        var changes: [String] = []
+        
+        if deletedTracksCount > 0 {
+            changes.append("\(deletedTracksCount) deleted")
+        }
+        
+        if hasReorderingChanges {
+            changes.append("reordered")
+        }
+        
+        return changes.isEmpty ? "Unsaved changes" : changes.joined(separator: ", ")
     }
     
     func discardChanges() {

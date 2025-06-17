@@ -96,7 +96,7 @@ struct TrackListHeaderView: View {
                             .foregroundColor(.secondary)
                         
                         if viewModel.hasUnsavedChanges {
-                            Text("• Unsaved changes")
+                            Text("• \(viewModel.changesSummary)")
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
@@ -119,17 +119,18 @@ struct TrackListHeaderView: View {
                 }
                 .disabled(viewModel.tracks.isEmpty)
                 
-                // Group by artist button (only in tracks mode)
+                // Cluster tracks by artist button (only in tracks mode)
                 if viewModel.viewMode == .tracks {
                     Button(action: {
                         viewModel.groupByArtist()
                     }) {
                         HStack {
                             Image(systemName: "rectangle.3.group")
-                            Text("Group by Artist")
+                            Text("Cluster by Artist")
                         }
                     }
                     .disabled(viewModel.tracks.isEmpty)
+                    .help("Reorder tracks to cluster them by artist")
                 }
                 
                 // Preview button
@@ -202,7 +203,7 @@ struct TrackListContent: View {
     var body: some View {
         List {
             ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { index, track in
-                TrackRowView(track: track, index: index + 1)
+                TrackRowView(track: track, index: index + 1, viewModel: viewModel)
                     .listRowSeparator(.hidden)
             }
             .onMove { source, destination in
@@ -220,17 +221,8 @@ struct GroupedTrackListContent: View {
     var body: some View {
         List {
             ForEach(Array(viewModel.trackGroups.enumerated()), id: \.element.id) { groupIndex, group in
-                Section {
-                    ForEach(Array(group.tracks.enumerated()), id: \.element.id) { trackIndex, track in
-                        TrackRowView(track: track, index: nil)
-                            .listRowSeparator(.hidden)
-                    }
-                    .onMove { source, destination in
-                        viewModel.moveTrackWithinGroup(groupIndex: groupIndex, from: source, to: destination)
-                    }
-                } header: {
-                    ArtistGroupHeaderView(artistName: group.artistName, trackCount: group.tracks.count)
-                }
+                ArtistGroupHeaderView(artistName: group.artistName, trackCount: group.tracks.count, viewModel: viewModel)
+                    .listRowSeparator(.hidden)
             }
             .onMove { source, destination in
                 viewModel.moveTrackGroup(from: source, to: destination)
@@ -244,6 +236,7 @@ struct GroupedTrackListContent: View {
 struct TrackRowView: View {
     let track: SpotifyPlaylistTrack
     let index: Int?
+    @ObservedObject var viewModel: PlaylistViewModel
     
     var body: some View {
         HStack(spacing: 12) {
@@ -307,6 +300,21 @@ struct TrackRowView: View {
         .padding(.horizontal, 8)
         .background(Color.clear)
         .contentShape(Rectangle())
+        .contextMenu {
+            Button(action: {
+                viewModel.deleteTrack(track)
+            }) {
+                Label("Delete from Playlist", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(action: {
+                viewModel.deleteTrack(track)
+            }) {
+                Label("Delete", systemImage: "trash")
+            }
+            .tint(.red)
+        }
     }
 }
 
@@ -314,6 +322,7 @@ struct TrackRowView: View {
 struct ArtistGroupHeaderView: View {
     let artistName: String
     let trackCount: Int
+    @ObservedObject var viewModel: PlaylistViewModel
     
     var body: some View {
         HStack {
@@ -337,6 +346,22 @@ struct ArtistGroupHeaderView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 8)
         .background(Color(NSColor.controlBackgroundColor))
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(action: {
+                viewModel.deleteArtist(artistName)
+            }) {
+                Label("Delete All Tracks by \(artistName)", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(action: {
+                viewModel.deleteArtist(artistName)
+            }) {
+                Label("Delete Artist", systemImage: "trash")
+            }
+            .tint(.red)
+        }
     }
 }
 

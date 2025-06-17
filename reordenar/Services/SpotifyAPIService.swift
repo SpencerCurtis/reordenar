@@ -229,6 +229,25 @@ class SpotifyAPIService: ObservableObject {
         return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
     }
     
+    func fetchAllUserPlaylists() async throws -> [SpotifyPlaylist] {
+        var allPlaylists: [SpotifyPlaylist] = []
+        var offset = 0
+        let limit = 50
+        
+        repeat {
+            let response = try await fetchUserPlaylists(limit: limit, offset: offset)
+            allPlaylists.append(contentsOf: response.items)
+            offset += limit
+            
+            // Continue if we have more playlists to fetch
+            if response.next == nil || response.items.count < limit {
+                break
+            }
+        } while true
+        
+        return allPlaylists
+    }
+    
     func fetchPlaylistTracks(playlistId: String, limit: Int = 100, offset: Int = 0) async throws -> SpotifyPlaylistTracksResponse {
         guard let url = URL(string: "\(baseURL)/playlists/\(playlistId)/tracks?limit=\(limit)&offset=\(offset)") else {
             throw SpotifyAPIError.invalidURL
@@ -238,6 +257,25 @@ class SpotifyAPIService: ObservableObject {
         let (data, _) = try await URLSession.shared.data(for: request)
         
         return try JSONDecoder().decode(SpotifyPlaylistTracksResponse.self, from: data)
+    }
+    
+    func fetchAllPlaylistTracks(playlistId: String) async throws -> [SpotifyPlaylistTrack] {
+        var allTracks: [SpotifyPlaylistTrack] = []
+        var offset = 0
+        let limit = 100
+        
+        repeat {
+            let response = try await fetchPlaylistTracks(playlistId: playlistId, limit: limit, offset: offset)
+            allTracks.append(contentsOf: response.items)
+            offset += limit
+            
+            // Continue if we have more tracks to fetch
+            if response.next == nil || response.items.count < limit {
+                break
+            }
+        } while true
+        
+        return allTracks
     }
     
     // MARK: - Recently Played API
@@ -274,30 +312,54 @@ class SpotifyAPIService: ObservableObject {
         return try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
     }
     
-    // MARK: - Reorder API
+        // MARK: - Reorder API
     func reorderPlaylistTracks(playlistId: String, rangeStart: Int, insertBefore: Int, rangeLength: Int = 1) async throws {
         guard let url = URL(string: "\(baseURL)/playlists/\(playlistId)/tracks") else {
             throw SpotifyAPIError.invalidURL
         }
-        
+
         var request = try await authenticatedRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         let reorderRequest = SpotifyReorderRequest(
             range_start: rangeStart,
             insert_before: insertBefore,
             range_length: rangeLength,
             snapshot_id: nil
         )
-        
+
         request.httpBody = try JSONEncoder().encode(reorderRequest)
-        
+
         let (_, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw SpotifyAPIError.reorderFailed
+        }
+    }
+    
+    // MARK: - Delete Track API
+    func removeTrackFromPlaylist(playlistId: String, trackUri: String) async throws {
+        guard let url = URL(string: "\(baseURL)/playlists/\(playlistId)/tracks") else {
+            throw SpotifyAPIError.invalidURL
+        }
+
+        var request = try await authenticatedRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let removeRequest = SpotifyRemoveTrackRequest(
+            tracks: [SpotifyTrackToRemove(uri: trackUri)]
+        )
+
+        request.httpBody = try JSONEncoder().encode(removeRequest)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw SpotifyAPIError.deleteFailed
         }
     }
     
@@ -323,6 +385,7 @@ enum SpotifyAPIError: Error {
     case tokenRefreshFailed
     case noRefreshToken
     case reorderFailed
+    case deleteFailed
     case invalidResponse
     case insufficientScope
     case apiError(Int)
@@ -345,6 +408,8 @@ enum SpotifyAPIError: Error {
             return "No refresh token available"
         case .reorderFailed:
             return "Failed to reorder playlist tracks"
+        case .deleteFailed:
+            return "Failed to delete track from playlist"
         case .invalidResponse:
             return "Invalid response from Spotify"
         case .insufficientScope:

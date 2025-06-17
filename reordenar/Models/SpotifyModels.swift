@@ -138,6 +138,15 @@ struct SpotifyReorderRequest: Codable {
     let snapshot_id: String?
 }
 
+// MARK: - Delete Track Models
+struct SpotifyRemoveTrackRequest: Codable {
+    let tracks: [SpotifyTrackToRemove]
+}
+
+struct SpotifyTrackToRemove: Codable {
+    let uri: String
+}
+
 // MARK: - Error Models
 struct SpotifyError: Codable {
     let error: SpotifyErrorDetails
