@@ -46,7 +46,7 @@ class SpotifyAPIService: ObservableObject {
     
     // MARK: - Authentication
     func getAuthorizationURL() -> URL? {
-        let scopes = "playlist-read-private playlist-modify-private playlist-modify-public"
+        let scopes = "playlist-read-private playlist-modify-private playlist-modify-public user-read-recently-played"
         let state = UUID().uuidString
         
         var components = URLComponents(string: "\(accountsURL)/authorize")
@@ -240,6 +240,40 @@ class SpotifyAPIService: ObservableObject {
         return try JSONDecoder().decode(SpotifyPlaylistTracksResponse.self, from: data)
     }
     
+    // MARK: - Recently Played API
+    func fetchRecentlyPlayedTracks(limit: Int = 50, after: Int? = nil, before: Int? = nil) async throws -> SpotifyRecentlyPlayedResponse {
+        var urlString = "\(baseURL)/me/player/recently-played?limit=\(limit)"
+        
+        if let after = after {
+            urlString += "&after=\(after)"
+        }
+        
+        if let before = before {
+            urlString += "&before=\(before)"
+        }
+        
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURL
+        }
+        
+        let request = try await authenticatedRequest(url: url)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+        
+        if httpResponse.statusCode == 403 {
+            throw SpotifyAPIError.insufficientScope
+        }
+        
+        if httpResponse.statusCode != 200 {
+            throw SpotifyAPIError.apiError(httpResponse.statusCode)
+        }
+        
+        return try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
+    }
+    
     // MARK: - Reorder API
     func reorderPlaylistTracks(playlistId: String, rangeStart: Int, insertBefore: Int, rangeLength: Int = 1) async throws {
         guard let url = URL(string: "\(baseURL)/playlists/\(playlistId)/tracks") else {
@@ -289,6 +323,9 @@ enum SpotifyAPIError: Error {
     case tokenRefreshFailed
     case noRefreshToken
     case reorderFailed
+    case invalidResponse
+    case insufficientScope
+    case apiError(Int)
     
     var localizedDescription: String {
         switch self {
@@ -308,6 +345,12 @@ enum SpotifyAPIError: Error {
             return "No refresh token available"
         case .reorderFailed:
             return "Failed to reorder playlist tracks"
+        case .invalidResponse:
+            return "Invalid response from Spotify"
+        case .insufficientScope:
+            return "Insufficient scope for the recently played endpoint"
+        case .apiError(let statusCode):
+            return "API error: \(statusCode)"
         }
     }
 }

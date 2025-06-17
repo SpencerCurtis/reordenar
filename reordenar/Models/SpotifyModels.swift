@@ -158,4 +158,49 @@ struct TrackGroup: Identifiable {
 enum ViewMode {
     case tracks
     case groupedByArtist
+}
+
+// MARK: - Recently Played Models
+struct SpotifyRecentlyPlayedResponse: Codable {
+    let href: String
+    let limit: Int
+    let next: String?
+    let cursors: SpotifyPlayHistoryCursors?
+    let items: [SpotifyPlayHistoryObject]
+}
+
+struct SpotifyPlayHistoryCursors: Codable {
+    let after: String?
+    let before: String?
+}
+
+struct SpotifyPlayHistoryObject: Codable, Identifiable {
+    let track: SpotifyTrack
+    let played_at: String
+    let context: SpotifyPlayHistoryContext?
+    
+    var id: String {
+        "\(track.id)_\(played_at)"
+    }
+    
+    var playedAtDate: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: played_at)
+    }
+}
+
+struct SpotifyPlayHistoryContext: Codable {
+    let type: String
+    let href: String?
+    let external_urls: SpotifyExternalUrls?
+    let uri: String
+    
+    // Extract playlist ID from context URI if it's a playlist
+    var playlistId: String? {
+        if type == "playlist", uri.hasPrefix("spotify:playlist:") {
+            return String(uri.dropFirst("spotify:playlist:".count))
+        }
+        return nil
+    }
 } 

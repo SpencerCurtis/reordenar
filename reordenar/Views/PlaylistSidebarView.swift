@@ -81,7 +81,7 @@ struct PlaylistSidebarView: View {
                         }
                     }
                 )) { playlist in
-                    PlaylistRowView(playlist: playlist)
+                    PlaylistRowView(playlist: playlist, viewModel: viewModel)
                         .tag(playlist.id)
                 }
                 .listStyle(SidebarListStyle())
@@ -102,6 +102,7 @@ struct PlaylistSidebarView: View {
                     }
                 }
                 .disabled(viewModel.isLoading)
+                .help("Refresh playlists and recently played order")
                 
                 Spacer()
                 
@@ -124,6 +125,7 @@ struct PlaylistSidebarView: View {
 
 struct PlaylistRowView: View {
     let playlist: SpotifyPlaylist
+    let viewModel: PlaylistViewModel
     
     var body: some View {
         HStack(spacing: 12) {
@@ -136,42 +138,50 @@ struct PlaylistRowView: View {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.gray.opacity(0.3))
                     .overlay(
-                        Image(systemName: "music.note")
-                            .foregroundColor(.gray)
+                        Image(systemName: "music.note.list")
+                            .foregroundColor(.secondary)
                     )
             }
             .frame(width: 40, height: 40)
-            .clipped()
-            .cornerRadius(4)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
             
+            // Playlist info
             VStack(alignment: .leading, spacing: 2) {
                 Text(playlist.name)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                 
-                if let trackCount = playlist.tracks?.total {
-                    Text("\(trackCount) songs")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                if let description = playlist.description, !description.isEmpty {
-                    Text(description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
+                Text("\(playlist.tracks?.total ?? 0) tracks")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(viewModel.selectedPlaylist?.id == playlist.id ? 
+                      Color.accentColor.opacity(0.2) : Color.clear)
+        )
+        .onTapGesture {
+            viewModel.selectedPlaylist = playlist
+            Task {
+                await viewModel.fetchPlaylistTracks()
+            }
+        }
+        .help(playlist.name)
     }
 }
 
 #Preview {
+    let viewModel = PlaylistViewModel()
+    
     PlaylistSidebarView(
-        viewModel: PlaylistViewModel(),
+        viewModel: viewModel,
         authViewModel: AuthenticationViewModel()
     )
     .frame(width: 250, height: 500)

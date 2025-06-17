@@ -22,11 +22,13 @@ class PlaylistViewModel: ObservableObject {
     @Published var hasUnsavedChanges = false
     @Published var previewChanges: [SpotifyPlaylistTrack] = []
     @Published var showPreview = false
+    @Published var recentlyPlayedTracks: [SpotifyPlayHistoryObject] = []
     
     // MARK: - Private Properties
     private let spotifyAPI = SpotifyAPIService.shared
     private var cancellables = Set<AnyCancellable>()
     private var originalTrackOrder: [SpotifyPlaylistTrack] = []
+    private var playlistActivityMap: [String: Date] = [:]
     
     init() {
         // Listen to authentication changes
@@ -49,13 +51,69 @@ class PlaylistViewModel: ObservableObject {
         errorMessage = nil
         
         do {
+            // Fetch recently played tracks first to determine playlist activity
+            await fetchRecentlyPlayedTracks()
+            
             let response = try await spotifyAPI.fetchUserPlaylists()
-            playlists = response.items
+            let sortedPlaylists = sortPlaylistsByRecentActivity(response.items)
+            playlists = sortedPlaylists
         } catch {
             errorMessage = "Failed to fetch playlists: \(error.localizedDescription)"
         }
         
         isLoading = false
+    }
+    
+    func fetchRecentlyPlayedTracks() async {
+        do {
+            let response = try await spotifyAPI.fetchRecentlyPlayedTracks(limit: 50)
+            recentlyPlayedTracks = response.items
+            
+            // Build activity map from recently played tracks
+            buildPlaylistActivityMap()
+        } catch {
+            // Silently handle error - recently played is optional for core functionality
+            print("Failed to fetch recently played tracks: \(error.localizedDescription)")
+        }
+    }
+    
+    private func buildPlaylistActivityMap() {
+        playlistActivityMap.removeAll()
+        
+        for track in recentlyPlayedTracks {
+            if let playlistId = track.context?.playlistId,
+               let playedDate = track.playedAtDate {
+                
+                // Keep the most recent activity for each playlist
+                if let existingDate = playlistActivityMap[playlistId] {
+                    if playedDate > existingDate {
+                        playlistActivityMap[playlistId] = playedDate
+                    }
+                } else {
+                    playlistActivityMap[playlistId] = playedDate
+                }
+            }
+        }
+    }
+    
+    private func sortPlaylistsByRecentActivity(_ playlists: [SpotifyPlaylist]) -> [SpotifyPlaylist] {
+        let sorted = playlists.sorted { playlist1, playlist2 in
+            let date1 = playlistActivityMap[playlist1.id]
+            let date2 = playlistActivityMap[playlist2.id]
+            
+            switch (date1, date2) {
+            case (let d1?, let d2?):
+                return d1 > d2 // Most recent first
+            case (_?, nil):
+                return true // Has activity beats no activity
+            case (nil, _?):
+                return false // No activity loses to has activity
+            case (nil, nil):
+                return false // Maintain original order for both without activity
+            }
+        }
+        
+        return sorted
     }
     
     func selectPlaylist(_ playlist: SpotifyPlaylist) async {
@@ -95,6 +153,8 @@ class PlaylistViewModel: ObservableObject {
         hasUnsavedChanges = false
         previewChanges = []
         showPreview = false
+        recentlyPlayedTracks = []
+        playlistActivityMap.removeAll()
     }
     
     // MARK: - View Mode Management
@@ -272,6 +332,12 @@ class PlaylistViewModel: ObservableObject {
     
     func refreshCurrentPlaylist() async {
         await fetchPlaylistTracks()
+    }
+    
+    func refreshPlaylistOrder() async {
+        await fetchRecentlyPlayedTracks()
+        let sortedPlaylists = sortPlaylistsByRecentActivity(playlists)
+        playlists = sortedPlaylists
     }
 }
 

@@ -1,0 +1,206 @@
+# Reordenar SwiftUI macOS App - Cursor Rules
+
+## Architecture & Organization
+
+### MVVM Pattern
+- Follow strict MVVM architecture with clear separation of concerns
+- **Models**: Data structures and API response models in `Models/` folder
+- **Services**: Business logic, API communication, data persistence in `Services/` folder  
+- **ViewModels**: State management, business logic coordination in `ViewModels/` folder
+- **Views**: SwiftUI UI components only, minimal logic in `Views/` folder
+
+### File Structure
+```
+reordenar/
+├── Models/           # Data structures, Codable models
+├── Services/         # API, Keychain, external services
+├── ViewModels/       # @ObservableObject classes
+├── Views/           # SwiftUI views
+├── Config.plist     # Gitignored credentials
+└── Info.plist       # App configuration
+```
+
+## Swift & SwiftUI Conventions
+
+### Modern Swift Patterns
+- Use `async/await` for all asynchronous operations, avoid completion handlers
+- Use `@MainActor` for ViewModels that update UI
+- Prefer `@Published` properties over manual state updates
+- Use `Task { }` for calling async methods from sync contexts
+
+### SwiftUI Best Practices
+- Use `@StateObject` for ViewModel creation, `@ObservedObject` for passed instances
+- Prefer `NavigationSplitView` for macOS sidebar navigation
+- Use native macOS styling: `.buttonStyle(.borderedProminent)`, `Color(NSColor.controlBackgroundColor)`
+- Implement proper `.help()` tooltips for macOS
+- Use `List` with `.listStyle()` modifiers for native feel
+
+### State Management
+- ViewModels should be `@MainActor` and inherit from `ObservableObject`
+- Use `@Published` for all UI-bound properties
+- Combine publishers with `.sink()` for reactive data flow
+- Store `AnyCancellable` in `Set<AnyCancellable>` for memory management
+
+## Security & Configuration
+
+### Credential Management
+- Never commit API keys/secrets to repo
+- Use `Config.plist` (gitignored) for sensitive configuration
+- Load credentials with proper error handling and `fatalError()` for missing config
+- Store user tokens in macOS Keychain using `Security` framework
+
+### Keychain Implementation
+- Use service-specific keychain entries with app bundle identifier
+- Implement proper error handling for keychain operations
+- Provide convenience methods for token-specific operations
+- Delete tokens on logout for security
+
+## API & Service Layer
+
+### Spotify API Integration
+- Create dedicated `SpotifyAPIService` class as singleton
+- Use `URLSession` for all HTTP requests, avoid third-party networking libraries
+- Implement automatic token refresh before API calls
+- Use proper HTTP status code checking and error handling
+
+### Service Pattern
+- Services should be singleton classes (`static let shared`)
+- Use dependency injection in ViewModels
+- Services handle all external communication (API, Keychain, etc.)
+- Return domain models, not raw API responses
+
+## Error Handling
+
+### Custom Error Types
+- Create custom `Error` enums for each service
+- Implement `LocalizedError` for user-facing messages
+- Use `do-catch` blocks with specific error handling
+- Display user-friendly error messages in UI
+
+### Example Error Pattern
+```swift
+enum SpotifyAPIError: Error, LocalizedError {
+    case notAuthenticated
+    case invalidURL
+    case tokenRefreshFailed
+    
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated: return "Not authenticated with Spotify"
+        // ...
+        }
+    }
+}
+```
+
+## UI/UX Guidelines
+
+### macOS Native Design
+- Use system colors: `Color(NSColor.controlBackgroundColor)`, `.secondary`
+- Implement proper window sizing with `.frame(minWidth:minHeight:)`
+- Use native toolbar styles: `.windowToolbarStyle(.unifiedCompact)`
+- Follow macOS spacing and padding conventions
+
+### Drag & Drop Implementation
+- Use `.onMove()` for List reordering
+- Implement proper drag handles and visual feedback
+- Update data models immediately, track changes for syncing
+- Provide undo/discard functionality for user safety
+
+### Loading States
+- Show `ProgressView` for async operations
+- Disable controls during loading with `.disabled(isLoading)`
+- Provide meaningful loading messages: "Loading playlists..."
+
+## Code Style
+
+### Naming Conventions
+- Use descriptive, full names: `fetchUserPlaylists()` not `getPlaylists()`
+- ViewModels end with `ViewModel`: `PlaylistViewModel`
+- Services end with `Service`: `SpotifyAPIService`
+- Use consistent prefixes: `Spotify` for all Spotify-related models
+
+### Comments & Documentation
+- Use `// MARK: -` for organizing code sections
+- Add header comments with file purpose and creation date
+- Document complex business logic and API interactions
+- Use `#Preview` for SwiftUI view previews
+
+### Property Organization
+```swift
+class ExampleViewModel: ObservableObject {
+    // MARK: - Published Properties
+    @Published var items: [Item] = []
+    @Published var isLoading = false
+    
+    // MARK: - Private Properties  
+    private let service = APIService.shared
+    private var cancellables = Set<AnyCancellable>()
+    
+    // MARK: - Initialization
+    init() { }
+    
+    // MARK: - Public Methods
+    func fetchData() async { }
+    
+    // MARK: - Private Methods
+    private func handleResponse() { }
+}
+```
+
+## Git & Version Control
+
+### Commit Practices
+- Use descriptive commit messages with emojis: "🎵 Add playlist reordering feature"
+- Commit logical units of work, not individual files
+- Include breaking changes and new features in commit messages
+
+### .gitignore Requirements
+- Exclude `Config.plist` and any files containing secrets
+- Ignore standard Xcode files: `xcuserdata/`, `build/`, `.DS_Store`
+- Include `Config.example.plist` template for setup
+
+## Testing & Preview
+
+### SwiftUI Previews
+- Always include `#Preview` for views with sample data
+- Use realistic test data that demonstrates actual functionality
+- Test different states: loading, empty, error, populated
+
+### Example Preview Pattern
+```swift
+#Preview {
+    PlaylistSidebarView(
+        viewModel: PlaylistViewModel(),
+        authViewModel: AuthenticationViewModel()
+    )
+    .frame(width: 250, height: 500)
+}
+```
+
+## Platform Considerations
+
+### macOS Specific
+- Use `NSWorkspace.shared.open()` for external URLs
+- Implement proper entitlements for sandbox and keychain access
+- Use URL scheme registration for OAuth callbacks
+- Design for resizable windows with minimum sizes
+
+### Future iOS Compatibility
+- Keep business logic in ViewModels and Services (platform agnostic)
+- Use SwiftUI patterns that work on both platforms
+- Avoid macOS-specific UI patterns in shared components
+- Same Web API integration works across platforms
+
+## Performance
+
+### Async Operations
+- Use `Task { }` for UI-initiated async calls
+- Implement proper cancellation for network requests
+- Cache frequently accessed data (playlists, user info)
+- Use `.task()` modifier for view lifecycle async operations
+
+### Memory Management
+- Store Combine cancellables properly to avoid retain cycles
+- Use `[weak self]` in closures when appropriate
+- Clean up resources in deinit when necessary 
