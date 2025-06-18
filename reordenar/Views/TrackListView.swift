@@ -253,19 +253,23 @@ struct TrackRowView: View {
             }
             
             // Album artwork
-            AsyncImage(url: URL(string: track.track?.album.images?.first?.url ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.3))
-                    .overlay(
-                        Image(systemName: "music.note")
-                            .foregroundColor(.gray)
-                            .font(.caption)
-                    )
-            }
+            CachedAsyncImage(
+                urlString: track.track?.album.images?.first?.url,
+                content: { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                },
+                placeholder: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: "music.note")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        )
+                }
+            )
             .frame(width: 40, height: 40)
             .clipped()
             .cornerRadius(4)

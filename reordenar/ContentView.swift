@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var authViewModel = AuthenticationViewModel()
+    @EnvironmentObject private var authViewModel: AuthenticationViewModel
     @StateObject private var playlistViewModel = PlaylistViewModel()
     
     var body: some View {
@@ -39,20 +39,21 @@ struct ContentView: View {
             } else {
                 // Login screen
                 LoginView()
-                    .onOpenURL { url in
-                        // Handle OAuth callback
-                        if url.scheme == "reordenar" && url.host == "callback" {
-                            Task {
-                                await authViewModel.handleCallback(url: url)
-                            }
-                        }
-                    }
             }
         }
         .frame(minWidth: 800, minHeight: 600)
+        .onOpenURL { url in
+            // Handle OAuth callback
+            if url.scheme == "reordenar" && url.host == "callback" {
+                Task { @MainActor in
+                    await authViewModel.handleCallback(url: url)
+                }
+            }
+        }
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(AuthenticationViewModel())
 }

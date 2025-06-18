@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct LoginView: View {
-    @StateObject private var authViewModel = AuthenticationViewModel()
+    @EnvironmentObject private var authViewModel: AuthenticationViewModel
     
     var body: some View {
         VStack(spacing: 30) {
@@ -88,5 +88,6 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
+        .environmentObject(AuthenticationViewModel())
         .frame(width: 600, height: 500)
 } 

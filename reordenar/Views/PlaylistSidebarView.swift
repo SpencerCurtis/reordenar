@@ -130,18 +130,22 @@ struct PlaylistRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             // Playlist image or placeholder
-            AsyncImage(url: URL(string: playlist.images?.first?.url ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.3))
-                    .overlay(
-                        Image(systemName: "music.note.list")
-                            .foregroundColor(.secondary)
-                    )
-            }
+            CachedAsyncImage(
+                urlString: playlist.images?.first?.url,
+                content: { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                },
+                placeholder: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: "music.note.list")
+                                .foregroundColor(.secondary)
+                        )
+                }
+            )
             .frame(width: 40, height: 40)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             
