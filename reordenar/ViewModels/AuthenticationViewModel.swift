@@ -28,6 +28,23 @@ class AuthenticationViewModel: ObservableObject {
         spotifyAPI.$currentUser
             .receive(on: DispatchQueue.main)
             .assign(to: &$currentUser)
+        
+        // Fetch user data if we're authenticated but don't have user info
+        Task {
+            await fetchUserDataIfNeeded()
+        }
+    }
+    
+    func fetchUserDataIfNeeded() async {
+        if isAuthenticated && currentUser == nil {
+            do {
+                try await spotifyAPI.fetchCurrentUser()
+            } catch {
+                // If we can't fetch user data, it might mean tokens are invalid
+                // The user will need to re-authenticate
+                print("Failed to fetch user data: \(error)")
+            }
+        }
     }
     
     func signInWithSpotify() {

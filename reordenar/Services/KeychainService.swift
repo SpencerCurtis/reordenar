@@ -106,5 +106,20 @@ class KeychainService {
     func deleteAllTokens() throws {
         try? delete(key: "spotify_access_token")
         try? delete(key: "spotify_refresh_token")
+        try? delete(key: "spotify_user_data")
+    }
+    
+    // MARK: - Convenience methods for user data
+    func saveUserData(_ userData: Data) throws {
+        let userDataString = userData.base64EncodedString()
+        try save(key: "spotify_user_data", data: userDataString)
+    }
+    
+    func loadUserData() throws -> Data {
+        let userDataString = try load(key: "spotify_user_data")
+        guard let userData = Data(base64Encoded: userDataString) else {
+            throw KeychainError.invalidData
+        }
+        return userData
     }
 } 

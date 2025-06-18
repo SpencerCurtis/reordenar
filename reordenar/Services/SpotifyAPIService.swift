@@ -134,6 +134,11 @@ class SpotifyAPIService: ObservableObject {
             accessToken = try keychain.loadAccessToken()
             refreshToken = try keychain.loadRefreshToken()
             isAuthenticated = accessToken != nil
+            
+            // Load stored user data if we have tokens
+            if isAuthenticated {
+                loadStoredUser()
+            }
         } catch {
             // No stored tokens, user needs to authenticate
             isAuthenticated = false
@@ -214,6 +219,24 @@ class SpotifyAPIService: ObservableObject {
         
         await MainActor.run {
             self.currentUser = user
+        }
+        
+        // Store user data for persistence
+        try storeUserData(data)
+    }
+    
+    private func storeUserData(_ userData: Data) throws {
+        try keychain.saveUserData(userData)
+    }
+    
+    private func loadStoredUser() {
+        do {
+            let userData = try keychain.loadUserData()
+            let user = try JSONDecoder().decode(SpotifyUser.self, from: userData)
+            currentUser = user
+        } catch {
+            // No stored user data, will be fetched on next API call
+            currentUser = nil
         }
     }
     
