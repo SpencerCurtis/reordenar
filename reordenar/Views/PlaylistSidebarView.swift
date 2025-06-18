@@ -130,8 +130,9 @@ struct PlaylistRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             // Playlist image or placeholder
-            CachedAsyncImage(
+            ScrollOptimizedAsyncImage(
                 urlString: playlist.images?.first?.url,
+                thumbnailSize: CGSize(width: 40, height: 40),
                 content: { image in
                     image
                         .resizable()

@@ -238,6 +238,26 @@ struct TrackRowView: View {
     let index: Int?
     @ObservedObject var viewModel: PlaylistViewModel
     
+    // Pre-compute expensive strings to avoid doing it during scrolling
+    private let trackName: String
+    private let artistName: String
+    private let albumName: String
+    private let duration: String
+    private let imageURL: String?
+    
+    init(track: SpotifyPlaylistTrack, index: Int?, viewModel: PlaylistViewModel) {
+        self.track = track
+        self.index = index
+        self.viewModel = viewModel
+        
+        // Pre-compute all display strings
+        self.trackName = track.track?.name ?? "Unknown Track"
+        self.artistName = track.track?.artistNames ?? "Unknown Artist"
+        self.albumName = track.track?.album.name ?? "Unknown Album"
+        self.duration = track.track?.durationFormatted ?? "0:00"
+        self.imageURL = track.track?.album.images?.first?.url
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
             // Track number or drag handle
@@ -253,8 +273,9 @@ struct TrackRowView: View {
             }
             
             // Album artwork
-            CachedAsyncImage(
-                urlString: track.track?.album.images?.first?.url,
+            ScrollOptimizedAsyncImage(
+                urlString: imageURL,
+                thumbnailSize: CGSize(width: 40, height: 40),
                 content: { image in
                     image
                         .resizable()
@@ -276,11 +297,11 @@ struct TrackRowView: View {
             
             // Track info
             VStack(alignment: .leading, spacing: 2) {
-                Text(track.track?.name ?? "Unknown Track")
+                Text(trackName)
                     .font(.system(size: 14, weight: .medium))
                     .lineLimit(1)
                 
-                Text(track.track?.artistNames ?? "Unknown Artist")
+                Text(artistName)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -290,12 +311,12 @@ struct TrackRowView: View {
             
             // Album name and duration
             VStack(alignment: .trailing, spacing: 2) {
-                Text(track.track?.album.name ?? "Unknown Album")
+                Text(albumName)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 
-                Text(track.track?.durationFormatted ?? "0:00")
+                Text(duration)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
             }

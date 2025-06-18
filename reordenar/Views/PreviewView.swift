@@ -99,8 +99,9 @@ struct PreviewTrackRowView: View {
                 .frame(width: 30, alignment: .trailing)
             
             // Album artwork
-            CachedAsyncImage(
+            ScrollOptimizedAsyncImage(
                 urlString: track.track?.album.images?.first?.url,
+                thumbnailSize: CGSize(width: 40, height: 40),
                 content: { image in
                     image
                         .resizable()

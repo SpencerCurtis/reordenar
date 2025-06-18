@@ -1,5 +1,5 @@
 //
-//  CachedAsyncImage.swift
+//  OfflineAsyncImage.swift
 //  reordenar
 //
 //  Created by Spencer Curtis on 6/16/25.
@@ -7,22 +7,24 @@
 
 import SwiftUI
 
-struct CachedAsyncImage<Content: View, Placeholder: View>: View {
-    private let url: URL?
+/// An async image view that provides fast scrolling with offline database fallback
+struct OfflineAsyncImage<Content: View, Placeholder: View>: View {
+    private let urlString: String?
     private let content: (Image) -> Content
     private let placeholder: () -> Placeholder
     
     @State private var image: Image?
     @State private var isLoading = false
+    @State private var loadingTask: Task<Void, Never>?
     
-    private let imageCache = ImageCacheService.shared
+    private let imageCache = HybridImageCache.shared
     
     init(
-        url: URL?,
+        urlString: String?,
         @ViewBuilder content: @escaping (Image) -> Content,
         @ViewBuilder placeholder: @escaping () -> Placeholder
     ) {
-        self.url = url
+        self.urlString = urlString
         self.content = content
         self.placeholder = placeholder
     }
@@ -37,103 +39,95 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                         Group {
                             if isLoading {
                                 ProgressView()
-                                    .scaleEffect(0.6)
+                                    .scaleEffect(0.5)
                                     .tint(.secondary)
                             }
                         }
                     )
             }
         }
-        .task(id: url?.absoluteString) {
-            await loadImage()
+        .onAppear {
+            loadImageIfNeeded()
+        }
+        .onDisappear {
+            cancelLoading()
+        }
+        .onChange(of: urlString) { _, _ in
+            image = nil
+            cancelLoading()
+            loadImageIfNeeded()
         }
     }
     
-    @MainActor
-    private func loadImage() async {
-        guard let url = url else { return }
+    private func loadImageIfNeeded() {
+        guard urlString != nil, image == nil, loadingTask == nil else { return }
         
-        isLoading = true
-        
-        do {
-            let imageData = try await imageCache.loadImage(from: url.absoluteString)
+        loadingTask = Task { @MainActor in
+            isLoading = true
+            defer { 
+                isLoading = false
+                loadingTask = nil
+            }
             
-            #if canImport(AppKit)
-            if let nsImage = NSImage(data: imageData) {
-                image = Image(nsImage: nsImage)
+            if let nsImage = await imageCache.image(for: urlString) {
+                if !Task.isCancelled {
+                    image = Image(nsImage: nsImage)
+                }
             }
-            #elseif canImport(UIKit)
-            if let uiImage = UIImage(data: imageData) {
-                image = Image(uiImage: uiImage)
-            }
-            #endif
-        } catch {
-            // Image failed to load, keep placeholder
-            print("Failed to load image: \(error.localizedDescription)")
         }
-        
+    }
+    
+    private func cancelLoading() {
+        loadingTask?.cancel()
+        loadingTask = nil
         isLoading = false
     }
 }
 
 // MARK: - Convenience Initializers
-extension CachedAsyncImage where Content == Image, Placeholder == Color {
-    init(url: URL?) {
+extension OfflineAsyncImage where Content == Image, Placeholder == Color {
+    init(urlString: String?) {
         self.init(
-            url: url,
+            urlString: urlString,
             content: { image in image },
-            placeholder: { Color.gray.opacity(0.3) }
+            placeholder: { Color.gray.opacity(0.2) }
         )
     }
 }
 
-extension CachedAsyncImage where Placeholder == Color {
+extension OfflineAsyncImage where Placeholder == Color {
     init(
-        url: URL?,
+        urlString: String?,
         @ViewBuilder content: @escaping (Image) -> Content
     ) {
         self.init(
-            url: url,
+            urlString: urlString,
             content: content,
-            placeholder: { Color.gray.opacity(0.3) }
+            placeholder: { Color.gray.opacity(0.2) }
         )
     }
 }
 
-extension CachedAsyncImage where Content == Image {
+extension OfflineAsyncImage where Content == Image {
     init(
-        url: URL?,
+        urlString: String?,
         @ViewBuilder placeholder: @escaping () -> Placeholder
     ) {
         self.init(
-            url: url,
+            urlString: urlString,
             content: { image in image },
             placeholder: placeholder
         )
     }
 }
 
-// MARK: - String URL Convenience
-extension CachedAsyncImage {
-    init(
-        urlString: String?,
-        @ViewBuilder content: @escaping (Image) -> Content,
-        @ViewBuilder placeholder: @escaping () -> Placeholder
-    ) {
-        let url = urlString.flatMap(URL.init(string:))
-        self.init(url: url, content: content, placeholder: placeholder)
-    }
-}
-
 #Preview {
     VStack(spacing: 20) {
-        // Basic usage
-        CachedAsyncImage(url: URL(string: "https://via.placeholder.com/150"))
+        OfflineAsyncImage(urlString: "https://via.placeholder.com/150")
             .frame(width: 150, height: 150)
         
-        // Custom content and placeholder
-        CachedAsyncImage(
-            url: URL(string: "https://via.placeholder.com/100"),
+        OfflineAsyncImage(
+            urlString: "https://via.placeholder.com/100",
             content: { image in
                 image
                     .resizable()
