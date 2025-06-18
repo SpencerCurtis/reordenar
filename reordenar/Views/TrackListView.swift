@@ -124,13 +124,13 @@ struct TrackListHeaderView: View {
                         if viewModel.isLoading {
                             ButtonProgressView()
                         } else {
-                            Image(systemName: "arrow.down.circle")
+                            Image(systemName: viewModel.hasMoreTracks ? "arrow.down.circle" : "checkmark.circle")
                         }
-                        Text("Load All (\(viewModel.totalTrackCount))")
+                        Text(viewModel.hasMoreTracks ? "Load All (\(viewModel.totalTrackCount))" : "All Tracks Loaded")
                     }
                 }
                 .disabled(viewModel.isLoading || !viewModel.hasMoreTracks)
-                .help("Load all tracks for better reordering experience")
+                .help(viewModel.hasMoreTracks ? "Load all tracks for better reordering experience" : "All tracks have been loaded")
                 
                 // View mode toggle
                 Button(action: {
@@ -211,6 +211,7 @@ struct TrackListHeaderView: View {
             }
         }
         .padding()
+        .frame(minHeight: 72)
         .background(Color(NSColor.controlBackgroundColor))
     }
 }

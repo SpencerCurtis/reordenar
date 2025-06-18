@@ -40,6 +40,7 @@ struct PlaylistSidebarView: View {
                 .help("Sign out")
             }
             .padding()
+            .frame(minHeight: 72)
             .background(Color(NSColor.controlBackgroundColor))
             
             Divider()
