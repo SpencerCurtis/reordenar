@@ -40,9 +40,9 @@ struct reordenarApp: App {
                 .environmentObject(authViewModel)
                 .modelContainer(sharedModelContainer)
                 .onAppear {
-                    // Configure the hybrid image cache with the model context
+                    // Configure the hybrid image cache with the model container
                     Task { @MainActor in
-                        HybridImageCache.shared.configure(with: sharedModelContainer.mainContext)
+                        HybridImageCache.shared.configure(with: sharedModelContainer)
                     }
                 }
         }

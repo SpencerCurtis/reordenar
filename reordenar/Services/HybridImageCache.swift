@@ -31,10 +31,11 @@ class HybridImageCache: ObservableObject {
     }
     
     // MARK: - Configuration
-    func configure(with modelContext: ModelContext) {
-        self.modelContext = modelContext
+    func configure(with modelContainer: ModelContainer) {
+        // Keep a reference to the main context for any main-thread operations
+        self.modelContext = modelContainer.mainContext
         Task {
-            await databaseActor.configure(with: modelContext)
+            await databaseActor.configure(with: modelContainer)
         }
     }
     
@@ -146,8 +147,9 @@ private actor DatabaseActor {
     private var modelContext: ModelContext?
     private let maxCacheSize: Int = 200 * 1024 * 1024 // 200MB
     
-    func configure(with modelContext: ModelContext) {
-        self.modelContext = modelContext
+    func configure(with modelContainer: ModelContainer) {
+        // Create a new ModelContext for this actor's background queue
+        self.modelContext = ModelContext(modelContainer)
         
         // Clean up expired images on startup
         Task {
