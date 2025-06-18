@@ -24,6 +24,13 @@ class PlaylistViewModel: ObservableObject {
     @Published var showPreview = false
     @Published var recentlyPlayedTracks: [SpotifyPlayHistoryObject] = []
     
+    // MARK: - Pagination Properties
+    @Published var isLoadingMore = false
+    @Published var hasMoreTracks = false 
+    @Published var totalTrackCount = 0
+    private var currentOffset = 0
+    private let pageSize = 50 // Load 50 tracks at a time
+    
     // MARK: - Private Properties
     private let spotifyAPI = SpotifyAPIService.shared
     private var cancellables = Set<AnyCancellable>()
@@ -120,10 +127,72 @@ class PlaylistViewModel: ObservableObject {
         guard selectedPlaylist?.id != playlist.id else { return }
         
         selectedPlaylist = playlist
-        await fetchPlaylistTracks()
+        await fetchInitialPlaylistTracks()
     }
     
-    func fetchPlaylistTracks() async {
+    func fetchInitialPlaylistTracks() async {
+        guard let playlist = selectedPlaylist else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        // Reset pagination state
+        currentOffset = 0
+        tracks = []
+        totalTrackCount = 0
+        hasMoreTracks = false
+        
+        do {
+            let response = try await spotifyAPI.fetchPlaylistTracks(playlistId: playlist.id, limit: pageSize, offset: 0)
+            let filteredTracks = response.items.filter { $0.track != nil } // Filter out null tracks
+            tracks = filteredTracks
+            originalTrackOrder = tracks
+            hasUnsavedChanges = false
+            
+            // Update pagination state
+            totalTrackCount = response.total
+            currentOffset = pageSize
+            hasMoreTracks = tracks.count < totalTrackCount
+            
+            if viewMode == .groupedByArtist {
+                updateTrackGroups()
+            }
+        } catch {
+            errorMessage = "Failed to fetch tracks: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    func loadMoreTracksIfNeeded() async {
+        guard !isLoadingMore && hasMoreTracks else { return }
+        guard let playlist = selectedPlaylist else { return }
+        
+        isLoadingMore = true
+        
+        do {
+            let response = try await spotifyAPI.fetchPlaylistTracks(playlistId: playlist.id, limit: pageSize, offset: currentOffset)
+            let filteredTracks = response.items.filter { $0.track != nil } // Filter out null tracks
+            
+            tracks.append(contentsOf: filteredTracks)
+            originalTrackOrder.append(contentsOf: filteredTracks)
+            
+            // Update pagination state
+            currentOffset += pageSize
+            hasMoreTracks = tracks.count < totalTrackCount
+            
+            if viewMode == .groupedByArtist {
+                updateTrackGroups()
+            }
+        } catch {
+            errorMessage = "Failed to load more tracks: \(error.localizedDescription)"
+        }
+        
+        isLoadingMore = false
+    }
+    
+    // Legacy method for when we need to load all tracks (for operations that require it)
+    func fetchAllPlaylistTracks() async {
         guard let playlist = selectedPlaylist else { return }
         
         isLoading = true
@@ -134,6 +203,11 @@ class PlaylistViewModel: ObservableObject {
             tracks = allTracks.filter { $0.track != nil } // Filter out null tracks
             originalTrackOrder = tracks
             hasUnsavedChanges = false
+            
+            // Update pagination state to reflect all tracks loaded
+            totalTrackCount = tracks.count
+            currentOffset = tracks.count
+            hasMoreTracks = false
             
             if viewMode == .groupedByArtist {
                 updateTrackGroups()
@@ -155,6 +229,12 @@ class PlaylistViewModel: ObservableObject {
         showPreview = false
         recentlyPlayedTracks = []
         playlistActivityMap.removeAll()
+        
+        // Reset pagination state
+        currentOffset = 0
+        totalTrackCount = 0
+        hasMoreTracks = false
+        isLoadingMore = false
     }
     
     // MARK: - View Mode Management
@@ -406,7 +486,14 @@ class PlaylistViewModel: ObservableObject {
     }
     
     func refreshCurrentPlaylist() async {
-        await fetchPlaylistTracks()
+        // If user has unsaved changes, we should preserve them and just refresh what we can
+        if hasUnsavedChanges {
+            // For now, just refresh the playlist list order
+            await refreshPlaylistOrder()
+        } else {
+            // Safe to refresh tracks from beginning
+            await fetchInitialPlaylistTracks()
+        }
     }
     
     func refreshPlaylistOrder() async {

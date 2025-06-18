@@ -91,9 +91,15 @@ struct TrackListHeaderView: View {
                         .lineLimit(1)
                     
                     HStack {
-                        Text("\(viewModel.tracks.count) tracks")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if viewModel.hasMoreTracks {
+                            Text("\(viewModel.tracks.count) of \(viewModel.totalTrackCount) tracks")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("\(viewModel.tracks.count) tracks")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         
                         if viewModel.hasUnsavedChanges {
                             Text("• \(viewModel.changesSummary)")
@@ -108,6 +114,27 @@ struct TrackListHeaderView: View {
             
             // Controls
             HStack(spacing: 12) {
+                // Load all tracks button (if there are more to load)
+                if viewModel.hasMoreTracks {
+                    Button(action: {
+                        Task {
+                            await viewModel.fetchAllPlaylistTracks()
+                        }
+                    }) {
+                        HStack {
+                            if viewModel.isLoading {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "arrow.down.circle")
+                            }
+                            Text("Load All (\(viewModel.totalTrackCount))")
+                        }
+                    }
+                    .disabled(viewModel.isLoading)
+                    .help("Load all tracks for better reordering experience")
+                }
+                
                 // View mode toggle
                 Button(action: {
                     viewModel.toggleViewMode()
@@ -205,9 +232,32 @@ struct TrackListContent: View {
             ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { index, track in
                 TrackRowView(track: track, index: index + 1, viewModel: viewModel)
                     .listRowSeparator(.hidden)
+                    .onAppear {
+                        // Load more tracks when we're near the end
+                        if index >= viewModel.tracks.count - 10 {
+                            Task {
+                                await viewModel.loadMoreTracksIfNeeded()
+                            }
+                        }
+                    }
             }
             .onMove { source, destination in
                 viewModel.moveTrack(from: source, to: destination)
+            }
+            
+            // Loading indicator at the bottom
+            if viewModel.isLoadingMore {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Loading more tracks...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding()
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(PlainListStyle())

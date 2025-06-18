@@ -173,9 +173,8 @@ struct PlaylistRowView: View {
                       Color.accentColor.opacity(0.2) : Color.clear)
         )
         .onTapGesture {
-            viewModel.selectedPlaylist = playlist
             Task {
-                await viewModel.fetchPlaylistTracks()
+                await viewModel.selectPlaylist(playlist)
             }
         }
         .help(playlist.name)
