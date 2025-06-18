@@ -74,6 +74,9 @@ struct SpotifyPlaylistTracksResponse: Codable {
     let previous: String?
 }
 
+/// Represents a track within a Spotify playlist
+/// Note: Uses trackId + added_at timestamp for unique SwiftUI identification
+/// This solves the duplicate ID issue when the same track appears multiple times in a playlist
 struct SpotifyPlaylistTrack: Codable, Identifiable {
     let track: SpotifyTrack?
     let added_at: String
@@ -81,7 +84,20 @@ struct SpotifyPlaylistTrack: Codable, Identifiable {
     let is_local: Bool
     
     var id: String {
-        track?.id ?? UUID().uuidString
+        // Create a unique ID that combines track ID with added timestamp
+        // This ensures that the same track added at different times has different IDs
+        // The added_at timestamp is unique per playlist entry, solving the duplicate ID issue
+        if let trackId = track?.id {
+            return "\(trackId)_\(added_at)"
+        } else {
+            // For null tracks, use a combination of added timestamp and user ID
+            return "null_\(added_at)_\(added_by.id)"
+        }
+    }
+    
+    // Keep the original track ID for API operations when needed
+    var trackId: String? {
+        track?.id
     }
 }
 
