@@ -107,8 +107,7 @@ struct PlaylistSidebarView: View {
                 Spacer()
                 
                 if viewModel.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.8)
+                    ButtonProgressView()
                 }
             }
             .padding()

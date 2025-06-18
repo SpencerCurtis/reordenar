@@ -52,8 +52,7 @@ struct LoginView: View {
             }) {
                 HStack {
                     if authViewModel.isLoading {
-                        ProgressView()
-                            .scaleEffect(0.8)
+                        ButtonProgressView()
                     } else {
                         Image(systemName: "music.note")
                     }

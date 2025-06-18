@@ -123,8 +123,7 @@ struct TrackListHeaderView: View {
                     }) {
                         HStack {
                             if viewModel.isLoading {
-                                ProgressView()
-                                    .scaleEffect(0.8)
+                                ButtonProgressView()
                             } else {
                                 Image(systemName: "arrow.down.circle")
                             }
@@ -194,8 +193,7 @@ struct TrackListHeaderView: View {
                     }) {
                         HStack {
                             if viewModel.isLoading {
-                                ProgressView()
-                                    .scaleEffect(0.8)
+                                ButtonProgressView()
                             } else {
                                 Image(systemName: "icloud.and.arrow.up")
                             }
@@ -249,8 +247,7 @@ struct TrackListContent: View {
             if viewModel.isLoadingMore {
                 HStack {
                     Spacer()
-                    ProgressView()
-                        .scaleEffect(0.8)
+                    ButtonProgressView()
                     Text("Loading more tracks...")
                         .font(.caption)
                         .foregroundColor(.secondary)
