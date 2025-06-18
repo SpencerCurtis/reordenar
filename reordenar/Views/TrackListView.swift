@@ -227,7 +227,7 @@ struct TrackListContent: View {
     
     var body: some View {
         List {
-            ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { index, track in
+            ForEach(Array(viewModel.tracks.enumerated()), id: \.offset) { index, track in
                 TrackRowView(track: track, index: index + 1, viewModel: viewModel)
                     .listRowSeparator(.hidden)
                     .onAppear {

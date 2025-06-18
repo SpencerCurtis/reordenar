@@ -48,7 +48,7 @@ struct PreviewView: View {
                 
                 // Track list preview
                 List {
-                    ForEach(Array(viewModel.previewChanges.enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(viewModel.previewChanges.enumerated()), id: \.offset) { index, track in
                         PreviewTrackRowView(track: track, index: index + 1)
                             .listRowSeparator(.hidden)
                     }
