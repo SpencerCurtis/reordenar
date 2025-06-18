@@ -114,25 +114,23 @@ struct TrackListHeaderView: View {
             
             // Controls
             HStack(spacing: 12) {
-                // Load all tracks button (if there are more to load)
-                if viewModel.hasMoreTracks {
-                    Button(action: {
-                        Task {
-                            await viewModel.fetchAllPlaylistTracks()
-                        }
-                    }) {
-                        HStack {
-                            if viewModel.isLoading {
-                                ButtonProgressView()
-                            } else {
-                                Image(systemName: "arrow.down.circle")
-                            }
-                            Text("Load All (\(viewModel.totalTrackCount))")
-                        }
+                // Load all tracks button (always visible, disabled when no more tracks)
+                Button(action: {
+                    Task {
+                        await viewModel.fetchAllPlaylistTracks()
                     }
-                    .disabled(viewModel.isLoading)
-                    .help("Load all tracks for better reordering experience")
+                }) {
+                    HStack {
+                        if viewModel.isLoading {
+                            ButtonProgressView()
+                        } else {
+                            Image(systemName: "arrow.down.circle")
+                        }
+                        Text("Load All (\(viewModel.totalTrackCount))")
+                    }
                 }
+                .disabled(viewModel.isLoading || !viewModel.hasMoreTracks)
+                .help("Load all tracks for better reordering experience")
                 
                 // View mode toggle
                 Button(action: {
@@ -159,50 +157,46 @@ struct TrackListHeaderView: View {
                     .help("Reorder tracks to cluster them by artist")
                 }
                 
-                // Preview button
-                if viewModel.hasUnsavedChanges {
-                    Button(action: {
-                        viewModel.generatePreview()
-                    }) {
-                        HStack {
-                            Image(systemName: "eye")
-                            Text("Preview")
-                        }
+                // Preview button (always visible, disabled when no changes)
+                Button(action: {
+                    viewModel.generatePreview()
+                }) {
+                    HStack {
+                        Image(systemName: "eye")
+                        Text("Preview")
                     }
                 }
+                .disabled(!viewModel.hasUnsavedChanges)
                 
-                // Discard changes button
-                if viewModel.hasUnsavedChanges {
-                    Button(action: {
-                        viewModel.discardChanges()
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.uturn.left")
-                            Text("Discard")
-                        }
+                // Discard changes button (always visible, disabled when no changes)
+                Button(action: {
+                    viewModel.discardChanges()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.uturn.left")
+                        Text("Discard")
                     }
-                    .foregroundColor(.red)
                 }
+                .disabled(!viewModel.hasUnsavedChanges)
+                .foregroundColor(.red)
                 
-                // Sync button
-                if viewModel.hasUnsavedChanges {
-                    Button(action: {
-                        Task {
-                            await viewModel.syncToSpotify()
-                        }
-                    }) {
-                        HStack {
-                            if viewModel.isLoading {
-                                ButtonProgressView()
-                            } else {
-                                Image(systemName: "icloud.and.arrow.up")
-                            }
-                            Text("Sync to Spotify")
-                        }
+                // Sync button (always visible, disabled when no changes)
+                Button(action: {
+                    Task {
+                        await viewModel.syncToSpotify()
                     }
-                    .disabled(viewModel.isLoading)
-                    .buttonStyle(.borderedProminent)
+                }) {
+                    HStack {
+                        if viewModel.isLoading {
+                            ButtonProgressView()
+                        } else {
+                            Image(systemName: "icloud.and.arrow.up")
+                        }
+                        Text("Sync to Spotify")
+                    }
                 }
+                .disabled(viewModel.isLoading || !viewModel.hasUnsavedChanges)
+                .buttonStyle(.borderedProminent)
                 
                 // Refresh button
                 Button(action: {

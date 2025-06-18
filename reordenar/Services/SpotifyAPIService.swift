@@ -127,13 +127,32 @@ class SpotifyAPIService: ObservableObject {
         if let refreshToken = refreshToken {
             try keychain.saveRefreshToken(refreshToken)
         }
+        if let tokenExpirationDate = tokenExpirationDate {
+            try keychain.saveTokenExpirationDate(tokenExpirationDate)
+        }
     }
     
     private func loadStoredTokens() {
         do {
             accessToken = try keychain.loadAccessToken()
             refreshToken = try keychain.loadRefreshToken()
+            tokenExpirationDate = try? keychain.loadTokenExpirationDate()
             isAuthenticated = accessToken != nil
+            
+            // If we have tokens but they're expired, try to refresh immediately
+            if isAuthenticated, let expirationDate = tokenExpirationDate, Date() > expirationDate {
+                Task {
+                    do {
+                        try await refreshAccessToken()
+                    } catch {
+                        print("Failed to refresh expired token on startup: \(error)")
+                        // If refresh fails, clear tokens and require re-authentication
+                        await MainActor.run {
+                            self.logout()
+                        }
+                    }
+                }
+            }
             
             // Load stored user data if we have tokens
             if isAuthenticated {
@@ -147,12 +166,15 @@ class SpotifyAPIService: ObservableObject {
     
     private func refreshAccessToken() async throws {
         guard let refreshToken = refreshToken else {
+            print("No refresh token available")
             throw SpotifyAPIError.noRefreshToken
         }
         
         guard let url = URL(string: "\(accountsURL)/api/token") else {
             throw SpotifyAPIError.invalidURL
         }
+        
+        print("Attempting to refresh access token...")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -172,8 +194,16 @@ class SpotifyAPIService: ObservableObject {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("Invalid response type during token refresh")
+            throw SpotifyAPIError.tokenRefreshFailed
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            print("Token refresh failed with status code: \(httpResponse.statusCode)")
+            if let errorData = String(data: data, encoding: .utf8) {
+                print("Error response: \(errorData)")
+            }
             throw SpotifyAPIError.tokenRefreshFailed
         }
         
@@ -188,16 +218,29 @@ class SpotifyAPIService: ObservableObject {
         }
         
         try storeTokens()
+        print("Access token refreshed successfully")
     }
     
     // MARK: - API Requests
     private func authenticatedRequest(url: URL) async throws -> URLRequest {
         // Check if token needs refresh
         if let expirationDate = tokenExpirationDate, Date() > expirationDate {
-            try await refreshAccessToken()
+            do {
+                try await refreshAccessToken()
+            } catch {
+                print("Token refresh failed, logging out user: \(error)")
+                await MainActor.run {
+                    self.logout()
+                }
+                throw SpotifyAPIError.notAuthenticated
+            }
         }
         
         guard let accessToken = accessToken else {
+            print("No access token available, user needs to re-authenticate")
+            await MainActor.run {
+                self.logout()
+            }
             throw SpotifyAPIError.notAuthenticated
         }
         
@@ -206,23 +249,77 @@ class SpotifyAPIService: ObservableObject {
         return request
     }
     
+    // MARK: - Safe API Call Wrapper
+    private func performAuthenticatedAPICall<T>(
+        url: URL,
+        method: String = "GET",
+        body: Data? = nil,
+        contentType: String? = nil,
+        decode: (Data) throws -> T
+    ) async throws -> T {
+        do {
+            var request = try await authenticatedRequest(url: url)
+            request.httpMethod = method
+            
+            if let body = body {
+                request.httpBody = body
+            }
+            
+            if let contentType = contentType {
+                request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            }
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SpotifyAPIError.invalidResponse
+            }
+            
+            // Handle authentication errors by logging out
+            if httpResponse.statusCode == 401 {
+                print("Received 401 Unauthorized, logging out user")
+                await MainActor.run {
+                    self.logout()
+                }
+                throw SpotifyAPIError.notAuthenticated
+            }
+            
+            // Handle other HTTP errors
+            guard httpResponse.statusCode == 200 else {
+                if httpResponse.statusCode == 403 {
+                    throw SpotifyAPIError.insufficientScope
+                }
+                throw SpotifyAPIError.apiError(httpResponse.statusCode)
+            }
+            
+            return try decode(data)
+        } catch SpotifyAPIError.notAuthenticated {
+            // Re-throw authentication errors
+            throw SpotifyAPIError.notAuthenticated
+        } catch {
+            // For any other error, check if it might be authentication-related
+            print("API call failed: \(error)")
+            throw error
+        }
+    }
+    
     // MARK: - User API
     func fetchCurrentUser() async throws {
         guard let url = URL(string: "\(baseURL)/me") else {
             throw SpotifyAPIError.invalidURL
         }
         
-        let request = try await authenticatedRequest(url: url)
-        let (data, _) = try await URLSession.shared.data(for: request)
-        
-        let user = try JSONDecoder().decode(SpotifyUser.self, from: data)
+        let user = try await performAuthenticatedAPICall(url: url) { data in
+            try JSONDecoder().decode(SpotifyUser.self, from: data)
+        }
         
         await MainActor.run {
             self.currentUser = user
         }
         
         // Store user data for persistence
-        try storeUserData(data)
+        let userData = try JSONEncoder().encode(user)
+        try storeUserData(userData)
     }
     
     private func storeUserData(_ userData: Data) throws {
@@ -246,10 +343,9 @@ class SpotifyAPIService: ObservableObject {
             throw SpotifyAPIError.invalidURL
         }
         
-        let request = try await authenticatedRequest(url: url)
-        let (data, _) = try await URLSession.shared.data(for: request)
-        
-        return try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
+        return try await performAuthenticatedAPICall(url: url) { data in
+            try JSONDecoder().decode(SpotifyPlaylistsResponse.self, from: data)
+        }
     }
     
     func fetchAllUserPlaylists() async throws -> [SpotifyPlaylist] {
@@ -276,10 +372,9 @@ class SpotifyAPIService: ObservableObject {
             throw SpotifyAPIError.invalidURL
         }
         
-        let request = try await authenticatedRequest(url: url)
-        let (data, _) = try await URLSession.shared.data(for: request)
-        
-        return try JSONDecoder().decode(SpotifyPlaylistTracksResponse.self, from: data)
+        return try await performAuthenticatedAPICall(url: url) { data in
+            try JSONDecoder().decode(SpotifyPlaylistTracksResponse.self, from: data)
+        }
     }
     
     func fetchAllPlaylistTracks(playlistId: String) async throws -> [SpotifyPlaylistTrack] {
@@ -317,22 +412,9 @@ class SpotifyAPIService: ObservableObject {
             throw SpotifyAPIError.invalidURL
         }
         
-        let request = try await authenticatedRequest(url: url)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
+        return try await performAuthenticatedAPICall(url: url) { data in
+            try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
         }
-        
-        if httpResponse.statusCode == 403 {
-            throw SpotifyAPIError.insufficientScope
-        }
-        
-        if httpResponse.statusCode != 200 {
-            throw SpotifyAPIError.apiError(httpResponse.statusCode)
-        }
-        
-        return try JSONDecoder().decode(SpotifyRecentlyPlayedResponse.self, from: data)
     }
     
         // MARK: - Reorder API
@@ -341,10 +423,6 @@ class SpotifyAPIService: ObservableObject {
             throw SpotifyAPIError.invalidURL
         }
 
-        var request = try await authenticatedRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         let reorderRequest = SpotifyReorderRequest(
             range_start: rangeStart,
             insert_before: insertBefore,
@@ -352,13 +430,16 @@ class SpotifyAPIService: ObservableObject {
             snapshot_id: nil
         )
 
-        request.httpBody = try JSONEncoder().encode(reorderRequest)
+        let requestBody = try JSONEncoder().encode(reorderRequest)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw SpotifyAPIError.reorderFailed
+        let _ = try await performAuthenticatedAPICall(
+            url: url,
+            method: "PUT",
+            body: requestBody,
+            contentType: "application/json"
+        ) { data in
+            // Just return empty data for successful reorder
+            return data
         }
     }
     
@@ -368,21 +449,20 @@ class SpotifyAPIService: ObservableObject {
             throw SpotifyAPIError.invalidURL
         }
 
-        var request = try await authenticatedRequest(url: url)
-        request.httpMethod = "DELETE"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         let removeRequest = SpotifyRemoveTrackRequest(
             tracks: [SpotifyTrackToRemove(uri: trackUri)]
         )
 
-        request.httpBody = try JSONEncoder().encode(removeRequest)
+        let requestBody = try JSONEncoder().encode(removeRequest)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw SpotifyAPIError.deleteFailed
+        let _ = try await performAuthenticatedAPICall(
+            url: url,
+            method: "DELETE",
+            body: requestBody,
+            contentType: "application/json"
+        ) { data in
+            // Just return empty data for successful delete
+            return data
         }
     }
     

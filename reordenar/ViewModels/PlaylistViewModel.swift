@@ -72,6 +72,12 @@ class PlaylistViewModel: ObservableObject {
     }
     
     func fetchRecentlyPlayedTracks() async {
+        // Only fetch recently played if we're authenticated
+        guard spotifyAPI.isAuthenticated else {
+            print("Skipping recently played tracks - not authenticated")
+            return
+        }
+        
         do {
             let response = try await spotifyAPI.fetchRecentlyPlayedTracks(limit: 50)
             recentlyPlayedTracks = response.items

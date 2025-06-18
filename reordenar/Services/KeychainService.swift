@@ -103,9 +103,23 @@ class KeychainService {
         try load(key: "spotify_refresh_token")
     }
     
+    func saveTokenExpirationDate(_ date: Date) throws {
+        let timestamp = String(date.timeIntervalSince1970)
+        try save(key: "spotify_token_expiration", data: timestamp)
+    }
+    
+    func loadTokenExpirationDate() throws -> Date {
+        let timestampString = try load(key: "spotify_token_expiration")
+        guard let timestamp = Double(timestampString) else {
+            throw KeychainError.invalidData
+        }
+        return Date(timeIntervalSince1970: timestamp)
+    }
+    
     func deleteAllTokens() throws {
         try? delete(key: "spotify_access_token")
         try? delete(key: "spotify_refresh_token")
+        try? delete(key: "spotify_token_expiration")
         try? delete(key: "spotify_user_data")
     }
     
